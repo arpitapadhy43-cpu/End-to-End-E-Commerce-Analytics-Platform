@@ -33,6 +33,11 @@ orders_schema = StructType([
 orders_df = spark.read.parquet("s3a://bronze/orders/")
 customers_df = spark.read.parquet("s3a://bronze/customers/")
 
+orders_df = orders_df.withColumn(
+    "raw_json",
+    regexp_replace("raw_json", r':\s*NaN', ': null')
+)
+
 orders_parsed = orders_df.withColumn(
     "parsed_json",
     from_json(col("raw_json"), orders_schema)
@@ -66,7 +71,7 @@ orders_clean = orders_clean.fillna({
 
 # Deduplication (VERY IMPORTANT)
 orders_clean = orders_clean.dropDuplicates([
-    "invoice_id", "stock_code", "event_time"
+    "invoice_id", "stock_code", "quantity", "event_time"
 ])
 
 orders_clean = orders_clean \
@@ -83,12 +88,48 @@ orders_final.write \
     .parquet("s3a://silver/orders/")
 
 
-customers_clean = customers_df \
-    .withColumn("silver_ingestion_time", current_timestamp())
+customers_schema = StructType([
+    StructField("event_type", StringType(), True),
+    StructField("customer_id", StringType(), True),
+    StructField("country", StringType(), True),
+    StructField("first_seen_time", StringType(), True)
+])
 
-customers_final = customers_clean.repartition(10)
+customers_parsed = customers_df.withColumn(
+    "parsed_json",
+    from_json(col("raw_json"), customers_schema)
+)
 
-customers_final.write \
+customers_flat = customers_parsed.select(
+    "kafka_key",
+    "topic",
+    "partition",
+    "offset",
+    "kafka_timestamp",
+    "bronze_ingestion_time",
+    col("parsed_json.*")
+)
+
+customers_clean = customers_flat.withColumn(
+    "first_seen_time",
+    to_timestamp(col("first_seen_time"), "yyyy-MM-dd HH:mm:ss")
+)
+
+customers_clean = customers_clean.filter(
+    col("customer_id").isNotNull()
+)
+
+customers_clean = customers_clean.dropDuplicates([
+    "customer_id", "first_seen_time"
+])
+
+customers_clean = customers_clean.withColumn(
+    "silver_ingestion_time",
+    current_timestamp()
+)
+
+
+customers_clean.write \
     .mode("overwrite") \
     .parquet("s3a://silver/customers/")
 
