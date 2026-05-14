@@ -7,6 +7,9 @@ from pyspark.sql.functions import (
 )
 from pyspark.sql.window import Window
 
+from utils.logger import PipelineLogger
+logger = PipelineLogger("reporting_layer", log_to_file=False)
+
 spark = (
     SparkSession.builder
     .appName("reporting")
@@ -20,6 +23,7 @@ spark = (
 )
 
 spark.sparkContext.setLogLevel("WARN")
+logger.info('reporting layer loading...')
 
 dim_date = spark.read.parquet("s3a://gold/dimensions/dim_date/")
 dim_product = spark.read.parquet("s3a://gold/dimensions/dim_product/")
@@ -81,7 +85,7 @@ revenue_yearly = sales \
 revenue_daily.write.mode("overwrite").parquet("s3a://gold/revenue_sales/revenue_daily/")
 revenue_monthly.write.mode("overwrite").parquet("s3a://gold/revenue_sales/revenue_monthly/")
 revenue_yearly.write.mode("overwrite").parquet("s3a://gold/revenue_sales/revenue_yearly/")
-print(" Table 1 — revenue daily/monthly/yearly written")
+logger.info(" Table 1 — revenue daily/monthly/yearly written")
 
 
 # ── 2. Top Selling Products per Country ──────────────────────────────────────
@@ -103,7 +107,7 @@ top_products_by_country = sales \
     .orderBy("country", "country_rank")
 
 top_products_by_country.write.mode("overwrite").parquet("s3a://gold/revenue_sales/top_products_by_country/")
-print(" Table 2 — top products by country written")
+logger.info(" Table 2 — top products by country written")
 
 
 # ── 3. Top Selling Products (Global, No Grain) ───────────────────────────────
@@ -126,7 +130,7 @@ top_products_global = sales \
     .orderBy("revenue_rank")
 
 top_products_global.write.mode("overwrite").parquet("s3a://gold/revenue_sales/top_products_global/")
-print(" Table 3 — top products global written")
+logger.info(" Table 3 — top products global written")
 
 
 # ── 4. Average Order Value ────────────────────────────────────────────────────
@@ -156,7 +160,7 @@ aov_overall = sales \
 
 aov_monthly.write.mode("overwrite").parquet("s3a://gold/revenue_sales/aov_monthly/")
 aov_overall.write.mode("overwrite").parquet("s3a://gold/revenue_sales/aov_overall/")
-print(" Table 4 — average order value written")
+logger.info(" Table 4 — average order value written")
 
 
 # ── 5. Total Revenue per Country per Month / Year ────────────────────────────
@@ -182,7 +186,7 @@ revenue_by_country_year = sales \
 
 revenue_by_country_month.write.mode("overwrite").parquet("s3a://gold/revenue_sales/revenue_by_country_month/")
 revenue_by_country_year.write.mode("overwrite").parquet("s3a://gold/revenue_sales/revenue_by_country_year/")
-print(" Table 5 — revenue by country written")
+logger.info(" Table 5 — revenue by country written")
 
 
 # ── 6. Product Demand Trends ──────────────────────────────────────────────────
@@ -208,12 +212,12 @@ product_demand_trends = sales \
     .orderBy("stock_code", "year", "month")
 
 product_demand_trends.write.mode("overwrite").parquet("s3a://gold/revenue_sales/product_demand_trends/")
-print("Table 6 — product demand trends written")
+logger.info("Table 6 — product demand trends written")
 
 
 # ── Summary ───────────────────────────────────────────────────────────────────
 
-print("\n Gold layer — revenue & sales complete.")
+logger.info("\n Gold layer — revenue & sales complete.")
 
 # ══════════════════════════════════════════════════════════════════════════════
 # REPORTING TABLES — Customer and product insights
@@ -226,7 +230,7 @@ sales = fact_order_items \
         coalesce(col("customer_id"), lit("guest"))
     )
  
-print("Base sales loaded:", sales.count())
+# logger.info(f"Base sales loaded: {sales.count()}")
  
  
 # 1. NEW VS RETURNING CUSTOMERS PER MONTH
@@ -270,7 +274,7 @@ new_vs_returning = customer_monthly_tagged \
     .orderBy("year", "month", "customer_type")
  
 new_vs_returning.write.mode("overwrite").parquet("s3a://gold/customer_analytics/new_vs_returning/")
-print(" Table 1 — new vs returning customers written")
+logger.info(" Table 1 — new vs returning customers written")
  
  
 # 2. CUSTOMER LIFETIME VALUE (CLV)
@@ -296,7 +300,7 @@ clv = sales \
     .orderBy("clv_rank")
  
 clv.write.mode("overwrite").parquet("s3a://gold/customer_analytics/customer_lifetime_value/")
-print(" Table 2 — customer lifetime value written")
+logger.info(" Table 2 — customer lifetime value written")
  
  
 # 3. CUSTOMERS PER COUNTRY
@@ -321,7 +325,7 @@ customers_per_country = customers_per_country \
     .orderBy(desc("total_customers"))
  
 customers_per_country.write.mode("overwrite").parquet("s3a://gold/customer_analytics/customers_per_country/")
-print(" Table 3 — customers per country written")
+logger.info(" Table 3 — customers per country written")
  
  
 # 4. CUSTOMERS WITH MAXIMUM ORDERS
@@ -346,7 +350,7 @@ top_customers_by_orders = sales \
     .orderBy("order_rank")
  
 top_customers_by_orders.write.mode("overwrite").parquet("s3a://gold/customer_analytics/top_customers_by_orders/")
-print(" Table 4 — top customers by orders written")
+logger.info(" Table 4 — top customers by orders written")
  
  
 # 5. RETENTION RATE (Month over Month)
@@ -389,7 +393,7 @@ retention = current_month \
     .drop("period")
  
 retention.write.mode("overwrite").parquet("s3a://gold/customer_analytics/retention_rate/")
-print(" Table 5 — retention rate written")
+logger.info(" Table 5 — retention rate written")
  
  
 # 6. BASKET SIZE (Product Insights)
@@ -425,9 +429,9 @@ basket_size_overall = basket_per_invoice \
  
 basket_size_monthly.write.mode("overwrite").parquet("s3a://gold/product_insights/basket_size_monthly/")
 basket_size_overall.write.mode("overwrite").parquet("s3a://gold/product_insights/basket_size_overall/")
-print(" Table 6 — basket size written")
+logger.info(" Table 6 — basket size written")
  
  
-print("\n Gold layer — customer analytics & product insights complete.")
+logger.info("\n Gold layer — customer analytics & product insights complete.")
 
 spark.stop()

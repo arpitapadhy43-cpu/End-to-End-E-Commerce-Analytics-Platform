@@ -1,6 +1,9 @@
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import col, current_timestamp
 
+from utils.logger import PipelineLogger
+logger = PipelineLogger("bronze_layer", log_to_file=False)
+
 
 spark = (
     SparkSession.builder
@@ -19,6 +22,7 @@ spark = (
 )
 
 spark.sparkContext.setLogLevel("WARN")
+logger.section("loading bronze...")
 
 orders_df = (
     spark.readStream
@@ -38,6 +42,8 @@ orders_bronze = orders_df.select(
     col("timestamp").alias("kafka_timestamp"),
     current_timestamp().alias("bronze_ingestion_time")
 )
+
+logger.log_count("orders bronze count is:", orders_bronze.count())
 
 orders_query = (
     orders_bronze.writeStream
@@ -66,6 +72,8 @@ customers_bronze = customers_df.select(
     col("timestamp").alias("kafka_timestamp"),
     current_timestamp().alias("bronze_ingestion_time")
 )
+
+logger.log_count("customers bronze count is:", orders_bronze.count())
 
 customers_query = (
     customers_bronze.writeStream

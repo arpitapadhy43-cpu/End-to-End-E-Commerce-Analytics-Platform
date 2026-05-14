@@ -8,29 +8,20 @@ services:
     volumes:
       - kafka-data:/var/lib/kafka/data
     environment:
-      # Node identity
       KAFKA_NODE_ID: 1
       KAFKA_PROCESS_ROLES: broker,controller
-
-      # Controller quorum configuration
       KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:29093
       KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
-
-      # Listeners
       KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:29092,PLAINTEXT_HOST://0.0.0.0:9092,CONTROLLER://0.0.0.0:29093
-
       KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
-
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT,CONTROLLER:PLAINTEXT
       KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
-
-      # Single-node production overrides
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
-
-      # Required for KRaft
-      CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qk  # random base64 string (keep fixed)
+      CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qk
+    networks:
+      - pipeline-network
 
   kafka-ui:
     image: provectuslabs/kafka-ui:latest
@@ -42,6 +33,8 @@ services:
     environment:
       KAFKA_CLUSTERS_0_NAME: local-kafka
       KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
+    networks:
+      - pipeline-network
 
   minio:
     image: minio/minio:latest
@@ -55,15 +48,18 @@ services:
     command: server /data --console-address ":9001"
     volumes:
       - minio-data:/data
+    networks:
+      - pipeline-network
 
   spark-master:
-    build: 
+    build:
       context: .
       dockerfile: ./Dockerfile_spark
     container_name: spark-master
     command: >
       bash -c "
       $$SPARK_HOME/sbin/start-master.sh &&
+      cd /opt/spark/jobs && python3 -c 'import shutil; shutil.make_archive(\"utils\", \"zip\", \".\", \"utils\")' || true &&
       tail -f /dev/null
       "
     ports:
@@ -71,12 +67,15 @@ services:
       - "8081:8080"
     volumes:
       - ../spark:/opt/spark/jobs
+      - spark-home:/opt/spark          # exposes spark binaries to shared volume
     depends_on:
       - minio
       - kafka
+    networks:
+      - pipeline-network
 
   spark-worker:
-    build: 
+    build:
       context: .
       dockerfile: ./Dockerfile_spark
     container_name: spark-worker
@@ -87,11 +86,14 @@ services:
       "
     volumes:
       - ../spark:/opt/spark/jobs
+      - spark-home:/opt/spark
     depends_on:
       - spark-master
+    networks:
+      - pipeline-network
 
   jupyter:
-    build: 
+    build:
       context: .
       dockerfile: ./Dockerfile_jupyter
     container_name: jupyter
@@ -106,7 +108,145 @@ services:
       - spark-worker
       - minio
       - kafka
+    networks:
+      - pipeline-network
+
+  postgres:
+    image: postgres:15
+    container_name: postgres
+    environment:
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow
+      POSTGRES_DB: airflow
+    volumes:
+      - airflow-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U airflow"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - pipeline-network
+
+  airflow-init:
+    build:
+      context: .
+      dockerfile: ./Dockerfile_airflow
+    container_name: airflow-init
+    depends_on:
+      postgres:
+        condition: service_healthy
+      spark-master:
+        condition: service_started
+    environment:
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
+      AIRFLOW__CORE__FERNET_KEY: ""
+      AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+      AIRFLOW_HOME: /opt/airflow 
+    volumes:
+      - ../dags:/opt/airflow/dags
+      - ../spark:/opt/spark/jobs
+      - airflow-logs:/opt/airflow/logs
+      - spark-home:/opt/spark          # spark binaries from spark-master
+    command: >
+      bash -c "
+      airflow db migrate &&
+      airflow users create
+      --username admin
+      --password admin
+      --firstname Admin
+      --lastname User
+      --role Admin
+      --email admin@example.com
+      "
+    restart: on-failure
+    networks:
+      - pipeline-network
+
+  airflow-webserver:
+    build:
+      context: .
+      dockerfile: ./Dockerfile_airflow
+    container_name: airflow-webserver
+    depends_on:
+      postgres:
+        condition: service_healthy
+      airflow-init:
+        condition: service_completed_successfully
+      spark-master:
+        condition: service_started
+    environment:
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
+      AIRFLOW__CORE__FERNET_KEY: ""
+      AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+      AIRFLOW__WEBSERVER__EXPOSE_CONFIG: "true"
+      AIRFLOW_HOME: /opt/airflow 
+    ports:
+      - "8082:8080"
+    volumes:
+      - ../dags:/opt/airflow/dags
+      - ../spark:/opt/spark/jobs
+      - airflow-logs:/opt/airflow/logs
+      - spark-home:/opt/spark
+    command: airflow webserver
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    networks:
+      - pipeline-network
+
+  airflow-scheduler:
+    build:
+      context: .
+      dockerfile: ./Dockerfile_airflow
+    container_name: airflow-scheduler
+    depends_on:
+      postgres:
+        condition: service_healthy
+      airflow-webserver:
+        condition: service_healthy
+      spark-master:
+        condition: service_started
+    environment:
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
+      AIRFLOW__CORE__FERNET_KEY: ""
+      AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+      AIRFLOW_HOME: /opt/airflow 
+    volumes:
+      - ../dags:/opt/airflow/dags
+      - ../spark:/opt/spark/jobs
+      - airflow-logs:/opt/airflow/logs
+      - spark-home:/opt/spark
+    command: airflow scheduler
+    networks:
+      - pipeline-network
+
+  superset:
+    build:
+      context: .
+      dockerfile: ./Dockerfile_superset
+    container_name: superset
+    ports:
+      - "8088:8088"
+    environment:
+      SUPERSET_SECRET_KEY: "retail_pipeline_secret_key_123"
+    depends_on:
+      - postgres
+    networks:
+      - pipeline-network
 
 volumes:
   kafka-data:
   minio-data:
+  airflow-logs:
+  airflow-db:
+  spark-home:       # shared spark binaries between spark-master and airflow
+
+networks:
+  pipeline-network:
+    driver: bridge

@@ -4,6 +4,9 @@ from pyspark.sql.functions import (
 )
 from pyspark.sql.types import IntegerType
 
+from utils.logger import PipelineLogger
+logger = PipelineLogger("facts_layer", log_to_file=False)
+
 
 spark = (
     SparkSession.builder
@@ -18,12 +21,13 @@ spark = (
 )
 
 spark.sparkContext.setLogLevel("WARN")
+logger.info('facts layer loading...')
 
 orders_silver = spark.read.parquet("s3a://silver/orders/")
 customers_silver = spark.read.parquet("s3a://silver/customers/")
 
-print(f"Orders silver loaded : {orders_silver.count()} rows")
-print(f"Customers silver loaded: {customers_silver.count()} rows")
+logger.info(f"Orders silver loaded : {orders_silver.count()} rows")
+logger.info(f"Customers silver loaded: {customers_silver.count()} rows")
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -66,7 +70,7 @@ fact_order_items.write \
     .partitionBy("year", "month") \
     .parquet("s3a://gold/facts/fact_order_items/")
 
-print(f"fact_order_items written: {fact_order_items.count()} rows")
-print("Tables written to s3a://gold/facts/")
+logger.info(f"fact_order_items written: {fact_order_items.count()} rows")
+logger.info("Tables written to s3a://gold/facts/")
 
 spark.stop()

@@ -2,6 +2,9 @@ from pyspark.sql import SparkSession
 from pyspark.sql.functions import *
 from pyspark.sql.types import *
 
+from utils.logger import PipelineLogger
+logger = PipelineLogger("silver_layer", log_to_file=False)
+
 spark = (
     SparkSession.builder
     .appName("silver-layer")
@@ -15,6 +18,7 @@ spark = (
 )
 
 spark.sparkContext.setLogLevel("WARN")
+logger.section("writing silver...")
 
 orders_schema = StructType([
     StructField("event_type", StringType(), True),
@@ -81,6 +85,7 @@ orders_clean = orders_clean \
 
 
 orders_final = orders_clean.repartition(20, "year", "month")
+logger.log_count("orders silver count:", orders_final.count())
 
 orders_final.write \
     .mode("overwrite") \
@@ -128,6 +133,7 @@ customers_clean = customers_clean.withColumn(
     current_timestamp()
 )
 
+logger.log_count("customers silver count:", customers_clean.count())
 
 customers_clean.write \
     .mode("overwrite") \

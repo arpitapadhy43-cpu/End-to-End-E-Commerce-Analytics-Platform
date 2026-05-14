@@ -9,6 +9,7 @@ ENV PATH=$PATH:$SPARK_HOME/bin
 # Install Python 3.11 instead of default 3.10
 RUN apt-get update && apt-get install -y \
     curl \
+    zip \
     python3.11 \
     python3.11-distutils \
     python3-pip \

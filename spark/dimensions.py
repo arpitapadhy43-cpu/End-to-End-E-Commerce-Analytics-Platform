@@ -10,6 +10,9 @@ from pyspark.sql.functions import (
 from pyspark.sql.window import Window
 from pyspark.sql.types import IntegerType
 
+from utils.logger import PipelineLogger
+logger = PipelineLogger("dimensions layer", log_to_file=False)
+
 
 spark = (
     SparkSession.builder
@@ -25,11 +28,13 @@ spark = (
 
 spark.sparkContext.setLogLevel("WARN")
 
+logger.info('dimension layer loading...')
+
 orders_silver = spark.read.parquet("s3a://silver/orders/")
 customers_silver = spark.read.parquet("s3a://silver/customers/")
 
-print(f"Orders silver loaded : {orders_silver.count()} rows")
-print(f"Customers silver loaded: {customers_silver.count()} rows")
+logger.info(f"Orders silver loaded : {orders_silver.count()} rows")
+logger.info(f"Customers silver loaded: {customers_silver.count()} rows")
 
 # dim_date 
 # Generated from the date range in orders_silver — not derived from row data
@@ -60,7 +65,7 @@ dim_date = spark.sql(f"""
 """)
 
 dim_date.write.mode("overwrite").parquet("s3a://gold/dimensions/dim_date/")
-print(f"dim_date written : {dim_date.count()} rows")
+logger.info(f"dim_date written : {dim_date.count()} rows")
 
 
 # dim_product
@@ -79,7 +84,7 @@ dim_product = orders_silver \
     .select("stock_code", "description")
 
 dim_product.write.mode("overwrite").parquet("s3a://gold/dimensions/dim_product/")
-print(f"dim_product written : {dim_product.count()} rows")
+logger.info(f"dim_product written : {dim_product.count()} rows")
 
 
 # dim_customer
@@ -95,7 +100,7 @@ dim_customer = customers_silver.select(
 )
 
 dim_customer.write.mode("overwrite").parquet("s3a://gold/dimensions/dim_customer/")
-print(f"dim_customer written : {dim_customer.count()} rows")
+logger.info(f"dim_customer written : {dim_customer.count()} rows")
 
 
 # dim_geography 
@@ -106,8 +111,8 @@ dim_geography = orders_silver \
     .filter(col("country").isNotNull())
 
 dim_geography.write.mode("overwrite").parquet("s3a://gold/dimensions/dim_geography/")
-print(f"dim_geography written : {dim_geography.count()} rows")
+logger.info(f"dim_geography written : {dim_geography.count()} rows")
 
-print(" Dimension Tables written to s3a://gold/dimensions/")
+logger.info(" Dimension Tables written to s3a://gold/dimensions/")
 
 spark.stop()

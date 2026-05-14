@@ -7,6 +7,9 @@ from pyspark.sql.functions import (
 from pyspark.sql.types import StructType, StructField, StringType, LongType, DoubleType, TimestampType
 from datetime import datetime
 
+from utils.logger import PipelineLogger
+logger = PipelineLogger("data_quality", log_to_file=False)
+
 spark = (
     SparkSession.builder
     .appName("data-quality-checks")
@@ -20,6 +23,7 @@ spark = (
 )
 
 spark.sparkContext.setLogLevel("WARN")
+logger.info('data quality checks and metrics loading...')
 
 RUN_TIMESTAMP = current_timestamp()
 RUN_ID = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
@@ -55,7 +59,7 @@ def add_metric(pipeline, layer, check_name, expected, actual, status, details=""
         status,
         details
     ))
-    print(f"[{status}] {pipeline} | {layer} | {check_name} | expected={expected} actual={actual} | {details}")
+    logger.info(f"[{status}] {pipeline} | {layer} | {check_name} | expected={expected} actual={actual} | {details}")
 
 
 bronze_orders_count    = orders_bronze.count()
@@ -200,7 +204,7 @@ if orphan_count > 0:
     orphan_orders.write \
         .mode("overwrite") \
         .parquet(f"s3a://gold/data_quality_issues/orphan_orders/run_id={RUN_ID}/")
-    print(f"  --> Orphan orders saved to gold/data_quality_issues/orphan_orders/run_id={RUN_ID}/")
+    logger.info(f"  --> Orphan orders saved to gold/data_quality_issues/orphan_orders/run_id={RUN_ID}/")
 
 
 monthly_revenue = orders_silver \
@@ -256,10 +260,11 @@ metrics_df.write \
     .mode("append") \
     .parquet("s3a://gold/data_quality_metrics/")
 
-print(f"\n✅ Data quality checks complete. Run ID: {RUN_ID}")
-print(f"   Total checks run : {len(metrics_rows)}")
-print(f"   PASS : {sum(1 for r in metrics_rows if r[7] == 'PASS')}")
-print(f"   WARN : {sum(1 for r in metrics_rows if r[7] == 'WARN')}")
-print(f"   FAIL : {sum(1 for r in metrics_rows if r[7] == 'FAIL')}")
+logger.info(f" Data quality checks complete. Run ID: {RUN_ID}")
+logger.info(f"   Total checks run : {len(metrics_rows)}")
+logger.info(f"   PASS : {sum(1 for r in metrics_rows if r[7] == 'PASS')}")
+logger.info(f"   WARN : {sum(1 for r in metrics_rows if r[7] == 'WARN')}")
+logger.info(f"   FAIL : {sum(1 for r in metrics_rows if r[7] == 'FAIL')}")
+
 
 spark.stop()

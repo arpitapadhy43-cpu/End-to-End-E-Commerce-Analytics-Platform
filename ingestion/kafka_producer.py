@@ -6,6 +6,9 @@ from kafka import KafkaProducer
 from datetime import datetime
 from dotenv import load_dotenv
 
+from spark.utils.logger import PipelineLogger
+logger = PipelineLogger("kafka_producer", log_to_file=False)
+
 load_dotenv()
 
 CHECKPOINT_FILE = os.environ["CHECKPOINT_FILE"]
@@ -40,6 +43,8 @@ start_index = read_checkpoint()
 seen_customers = set()
 previous_time = None
 
+logger.section("kafka producer started...")
+
 for i in range(start_index, len(df)):
     row = df.iloc[i]
 
@@ -63,6 +68,7 @@ for i in range(start_index, len(df)):
             "first_seen_time": str(current_time),
             "ingestion_time": str(datetime.utcnow())
         }
+        logger.info('Customer event sent...')
         producer.send(CUSTOMER_TOPIC, key=str(customer_id), value=customer_event)
         seen_customers.add(customer_id)
 
@@ -80,6 +86,7 @@ for i in range(start_index, len(df)):
             "total_amount": float(row["Quantity"] * row["Price"]),
             "ingestion_time": str(datetime.utcnow())
         }
+        logger.info('Order event sent...')
         producer.send(ORDER_TOPIC, key=invoice_id, value=event)
 
     elif row["Quantity"] < 0:
@@ -96,6 +103,7 @@ for i in range(start_index, len(df)):
             "total_amount": float(abs(row["Quantity"]) * row["Price"]),
             "ingestion_time": str(datetime.utcnow())
         }
+        logger.info('Cancelled event sent...')
         producer.send(ORDER_TOPIC, key=invoice_id, value=event)
 
     if i % 1000 == 0:
