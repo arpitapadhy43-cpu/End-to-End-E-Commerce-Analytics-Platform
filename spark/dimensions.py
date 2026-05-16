@@ -10,6 +10,11 @@ from pyspark.sql.functions import (
 from pyspark.sql.window import Window
 from pyspark.sql.types import IntegerType
 
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
 from utils.logger import PipelineLogger
 logger = PipelineLogger("dimensions layer", log_to_file=False)
 
@@ -17,9 +22,9 @@ logger = PipelineLogger("dimensions layer", log_to_file=False)
 spark = (
     SparkSession.builder
     .appName("dimensions")
-    .config("spark.hadoop.fs.s3a.endpoint", "http://minio:9000")
-    .config("spark.hadoop.fs.s3a.access.key", "admin")
-    .config("spark.hadoop.fs.s3a.secret.key", "admin123")
+    .config("spark.hadoop.fs.s3a.endpoint", os.environ["MINIO_URL"])
+    .config("spark.hadoop.fs.s3a.access.key", os.environ["MINIO_USER"])
+    .config("spark.hadoop.fs.s3a.secret.key", os.environ["MINIO_PASSWORD"])
     .config("spark.hadoop.fs.s3a.path.style.access", "true")
     .config("spark.hadoop.fs.s3a.connection.ssl.enabled", "false")
     .config("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem")
@@ -30,8 +35,8 @@ spark.sparkContext.setLogLevel("WARN")
 
 logger.info('dimension layer loading...')
 
-orders_silver = spark.read.parquet("s3a://silver/orders/")
-customers_silver = spark.read.parquet("s3a://silver/customers/")
+orders_silver = spark.read.parquet(os.environ["ORDERS_SILVER_PATH"])
+customers_silver = spark.read.parquet(os.environ["CUSTOMER_SILVER_PATH"])
 
 logger.info(f"Orders silver loaded : {orders_silver.count()} rows")
 logger.info(f"Customers silver loaded: {customers_silver.count()} rows")
@@ -64,7 +69,7 @@ dim_date = spark.sql(f"""
     )
 """)
 
-dim_date.write.mode("overwrite").parquet("s3a://gold/dimensions/dim_date/")
+dim_date.write.mode("overwrite").parquet(os.environ["DIM_DATE_PATH"])
 logger.info(f"dim_date written : {dim_date.count()} rows")
 
 
@@ -83,7 +88,7 @@ dim_product = orders_silver \
     .withColumnRenamed("stock_code", "stock_code") \
     .select("stock_code", "description")
 
-dim_product.write.mode("overwrite").parquet("s3a://gold/dimensions/dim_product/")
+dim_product.write.mode("overwrite").parquet(os.environ["DIM_PRODUCT_PATH"])
 logger.info(f"dim_product written : {dim_product.count()} rows")
 
 
@@ -99,7 +104,7 @@ dim_customer = customers_silver.select(
     .otherwise("unknown").alias("cohort")
 )
 
-dim_customer.write.mode("overwrite").parquet("s3a://gold/dimensions/dim_customer/")
+dim_customer.write.mode("overwrite").parquet(os.environ["DIM_CUSTOMER_PATH"])
 logger.info(f"dim_customer written : {dim_customer.count()} rows")
 
 
@@ -110,7 +115,7 @@ dim_geography = orders_silver \
     .distinct() \
     .filter(col("country").isNotNull())
 
-dim_geography.write.mode("overwrite").parquet("s3a://gold/dimensions/dim_geography/")
+dim_geography.write.mode("overwrite").parquet(os.environ["DIM_GEOGRAPHY_PATH"])
 logger.info(f"dim_geography written : {dim_geography.count()} rows")
 
 logger.info(" Dimension Tables written to s3a://gold/dimensions/")

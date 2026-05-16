@@ -7,6 +7,10 @@ from pyspark.sql.types import StructType, StructField, StringType, TimestampType
 from datetime import datetime
 from utils.logger import PipelineLogger
 
+from dotenv import load_dotenv
+import os
+load_dotenv()
+
 logger = PipelineLogger("gold_quality_checks", log_to_file=False)
 
 # ── Spark Session ─────────────────────────────────────────────────────────────
@@ -14,9 +18,9 @@ logger = PipelineLogger("gold_quality_checks", log_to_file=False)
 spark = (
     SparkSession.builder
     .appName("gold-quality-checks")
-    .config("spark.hadoop.fs.s3a.endpoint", "http://minio:9000")
-    .config("spark.hadoop.fs.s3a.access.key", "admin")
-    .config("spark.hadoop.fs.s3a.secret.key", "admin123")
+    .config("spark.hadoop.fs.s3a.endpoint", os.environ["MINIO_URL"])
+    .config("spark.hadoop.fs.s3a.access.key", os.environ["MINIO_USER"])
+    .config("spark.hadoop.fs.s3a.secret.key", os.environ["MINIO_PASSWORD"])
     .config("spark.hadoop.fs.s3a.path.style.access", "true")
     .config("spark.hadoop.fs.s3a.connection.ssl.enabled", "false")
     .config("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem")

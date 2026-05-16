@@ -7,15 +7,19 @@ from pyspark.sql.functions import (
 from pyspark.sql.types import StructType, StructField, StringType, LongType, DoubleType, TimestampType
 from datetime import datetime
 
+from dotenv import load_dotenv
+import os
+load_dotenv()
+
 from utils.logger import PipelineLogger
 logger = PipelineLogger("data_quality", log_to_file=False)
 
 spark = (
     SparkSession.builder
     .appName("data-quality-checks")
-    .config("spark.hadoop.fs.s3a.endpoint", "http://minio:9000")
-    .config("spark.hadoop.fs.s3a.access.key", "admin")
-    .config("spark.hadoop.fs.s3a.secret.key", "admin123")
+    .config("spark.hadoop.fs.s3a.endpoint", os.environ["MINIO_URL"])
+    .config("spark.hadoop.fs.s3a.access.key", os.environ["MINIO_USER"])
+    .config("spark.hadoop.fs.s3a.secret.key", os.environ["MINIO_PASSWORD"])
     .config("spark.hadoop.fs.s3a.path.style.access", "true")
     .config("spark.hadoop.fs.s3a.connection.ssl.enabled", "false")
     .config("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem")
@@ -28,10 +32,10 @@ logger.info('data quality checks and metrics loading...')
 RUN_TIMESTAMP = current_timestamp()
 RUN_ID = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
 
-orders_silver = spark.read.parquet("s3a://silver/orders/")
-customers_silver = spark.read.parquet("s3a://silver/customers/")
-orders_bronze = spark.read.parquet("s3a://bronze/orders/")
-customers_bronze = spark.read.parquet("s3a://bronze/customers/")
+orders_silver = spark.read.parquet(os.environ["ORDERS_SILVER_PATH"])
+customers_silver = spark.read.parquet(os.environ["CUSTOMER_SILVER_PATH"])
+orders_bronze = spark.read.parquet(os.environ["ORDERS_PATH"])
+customers_bronze = spark.read.parquet(os.environ["CUSTOMERS_PATH"])
 
 metrics_schema = StructType([
     StructField("run_id", StringType(), False),

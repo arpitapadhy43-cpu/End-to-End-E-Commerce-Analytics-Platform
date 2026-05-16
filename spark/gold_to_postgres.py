@@ -2,6 +2,10 @@ from pyspark.sql import SparkSession
 from pyspark.sql.functions import col
 from utils.logger import PipelineLogger
 
+from dotenv import load_dotenv
+import os
+load_dotenv()
+
 logger = PipelineLogger("gold_to_postgres", log_to_file=False)
 
 # ── Spark Session ─────────────────────────────────────────────────────────────
@@ -9,9 +13,9 @@ logger = PipelineLogger("gold_to_postgres", log_to_file=False)
 spark = (
     SparkSession.builder
     .appName("gold-to-postgres")
-    .config("spark.hadoop.fs.s3a.endpoint", "http://minio:9000")
-    .config("spark.hadoop.fs.s3a.access.key", "admin")
-    .config("spark.hadoop.fs.s3a.secret.key", "admin123")
+    .config("spark.hadoop.fs.s3a.endpoint", os.environ["MINIO_URL"])
+    .config("spark.hadoop.fs.s3a.access.key", os.environ["MINIO_USER"])
+    .config("spark.hadoop.fs.s3a.secret.key", os.environ["MINIO_PASSWORD"])
     .config("spark.hadoop.fs.s3a.path.style.access", "true")
     .config("spark.hadoop.fs.s3a.connection.ssl.enabled", "false")
     .config("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem")
@@ -25,11 +29,11 @@ spark.sparkContext.setLogLevel("WARN")
 # Create the database first by running:
 #   docker compose exec postgres psql -U airflow -c "CREATE DATABASE analytics;"
 
-POSTGRES_URL = "jdbc:postgresql://postgres:5432/analytics"
+POSTGRES_URL = os.environ["POSTGRES_URL"]
 POSTGRES_PROPS = {
-    "user": "airflow",
-    "password": "airflow",
-    "driver": "org.postgresql.Driver"
+    "user": os.environ["POSTGRES_USER"],
+    "password": os.environ["POSTGRES_PASSWORD"],
+    "driver": os.environ["POSTGRES_DRIVER"]
 }
 
 def write_to_postgres(df, table_name):

@@ -2,15 +2,21 @@ from pyspark.sql import SparkSession
 from pyspark.sql.functions import *
 from pyspark.sql.types import *
 
+import os
+
+from dotenv import load_dotenv
+
+load_dotenv()
+
 from utils.logger import PipelineLogger
 logger = PipelineLogger("silver_layer", log_to_file=False)
 
 spark = (
     SparkSession.builder
     .appName("silver-layer")
-    .config("spark.hadoop.fs.s3a.endpoint", "http://minio:9000")
-    .config("spark.hadoop.fs.s3a.access.key", "admin")
-    .config("spark.hadoop.fs.s3a.secret.key", "admin123")
+    .config("spark.hadoop.fs.s3a.endpoint", os.environ["MINIO_URL"])
+    .config("spark.hadoop.fs.s3a.access.key", os.environ["MINIO_USER"])
+    .config("spark.hadoop.fs.s3a.secret.key", os.environ["MINIO_PASSWORD"])
     .config("spark.hadoop.fs.s3a.path.style.access", "true")
     .config("spark.hadoop.fs.s3a.connection.ssl.enabled", "false")
     .config("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem")
@@ -34,8 +40,8 @@ orders_schema = StructType([
     StructField("ingestion_time", StringType(), True)
 ])
 
-orders_df = spark.read.parquet("s3a://bronze/orders/")
-customers_df = spark.read.parquet("s3a://bronze/customers/")
+orders_df = spark.read.parquet(os.environ["ORDERS_PATH"])
+customers_df = spark.read.parquet(os.environ["CUSTOMERS_PATH"])
 
 orders_df = orders_df.withColumn(
     "raw_json",
@@ -90,7 +96,7 @@ logger.log_count("orders silver count:", orders_final.count())
 orders_final.write \
     .mode("overwrite") \
     .partitionBy("year", "month") \
-    .parquet("s3a://silver/orders/")
+    .parquet(os.environ["ORDERS_SILVER_PATH"])
 
 
 customers_schema = StructType([
@@ -137,7 +143,7 @@ logger.log_count("customers silver count:", customers_clean.count())
 
 customers_clean.write \
     .mode("overwrite") \
-    .parquet("s3a://silver/customers/")
+    .parquet(os.environ["CUSTOMER_SILVER_PATH"])
 
 
 spark.stop()

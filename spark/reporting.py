@@ -6,6 +6,10 @@ from pyspark.sql.functions import (
     max as spark_max, first
 )
 from pyspark.sql.window import Window
+from dotenv import load_dotenv
+
+load_dotenv()
+import os
 
 from utils.logger import PipelineLogger
 logger = PipelineLogger("reporting_layer", log_to_file=False)
@@ -13,9 +17,9 @@ logger = PipelineLogger("reporting_layer", log_to_file=False)
 spark = (
     SparkSession.builder
     .appName("reporting")
-    .config("spark.hadoop.fs.s3a.endpoint", "http://minio:9000")
-    .config("spark.hadoop.fs.s3a.access.key", "admin")
-    .config("spark.hadoop.fs.s3a.secret.key", "admin123")
+    .config("spark.hadoop.fs.s3a.endpoint", os.environ["MINIO_URL"])
+    .config("spark.hadoop.fs.s3a.access.key", os.environ["MINIO_USER"])
+    .config("spark.hadoop.fs.s3a.secret.key", os.environ["MINIO_PASSWORD"])
     .config("spark.hadoop.fs.s3a.path.style.access", "true")
     .config("spark.hadoop.fs.s3a.connection.ssl.enabled", "false")
     .config("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem")
@@ -25,10 +29,10 @@ spark = (
 spark.sparkContext.setLogLevel("WARN")
 logger.info('reporting layer loading...')
 
-dim_date = spark.read.parquet("s3a://gold/dimensions/dim_date/")
-dim_product = spark.read.parquet("s3a://gold/dimensions/dim_product/")
-dim_customer = spark.read.parquet("s3a://gold/dimensions/dim_customer/")
-fact_order_items = spark.read.parquet("s3a://gold/facts/fact_order_items/")
+dim_date = spark.read.parquet(os.environ["DIM_DATE_PATH"])
+dim_product = spark.read.parquet(os.environ["DIM_PRODUCT_PATH"])
+dim_customer = spark.read.parquet(os.environ["DIM_CUSTOMER_PATH"])
+fact_order_items = spark.read.parquet(os.environ["FACT_OFFERS_PATH"])
 
 # ══════════════════════════════════════════════════════════════════════════════
 # REPORTING TABLES — Revenue & Sales

@@ -3,6 +3,9 @@ from pyspark.sql.functions import (
     col, to_date, date_format, when, abs as spark_abs
 )
 from pyspark.sql.types import IntegerType
+from dotenv import load_dotenv
+import os
+load_dotenv()
 
 from utils.logger import PipelineLogger
 logger = PipelineLogger("facts_layer", log_to_file=False)
@@ -11,9 +14,9 @@ logger = PipelineLogger("facts_layer", log_to_file=False)
 spark = (
     SparkSession.builder
     .appName("facts")
-    .config("spark.hadoop.fs.s3a.endpoint", "http://minio:9000")
-    .config("spark.hadoop.fs.s3a.access.key", "admin")
-    .config("spark.hadoop.fs.s3a.secret.key", "admin123")
+    .config("spark.hadoop.fs.s3a.endpoint", os.environ["MINIO_URL"])
+    .config("spark.hadoop.fs.s3a.access.key", os.environ["MINIO_USER"])
+    .config("spark.hadoop.fs.s3a.secret.key", os.environ["MINIO_PASSWORD"])
     .config("spark.hadoop.fs.s3a.path.style.access", "true")
     .config("spark.hadoop.fs.s3a.connection.ssl.enabled", "false")
     .config("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem")
@@ -23,8 +26,8 @@ spark = (
 spark.sparkContext.setLogLevel("WARN")
 logger.info('facts layer loading...')
 
-orders_silver = spark.read.parquet("s3a://silver/orders/")
-customers_silver = spark.read.parquet("s3a://silver/customers/")
+orders_silver = spark.read.parquet(os.environ["ORDERS_SILVER_PATH"])
+customers_silver = spark.read.parquet(os.environ["CUSTOMER_SILVER_PATH"])
 
 logger.info(f"Orders silver loaded : {orders_silver.count()} rows")
 logger.info(f"Customers silver loaded: {customers_silver.count()} rows")
@@ -68,7 +71,7 @@ fact_order_items = orders_silver \
 fact_order_items.write \
     .mode("overwrite") \
     .partitionBy("year", "month") \
-    .parquet("s3a://gold/facts/fact_order_items/")
+    .parquet(os.environ["FACT_OFFERS_PATH"])
 
 logger.info(f"fact_order_items written: {fact_order_items.count()} rows")
 logger.info("Tables written to s3a://gold/facts/")
