@@ -1,0 +1,3 @@
+pip install kafka-python pandas
+pip install python-dotenv
+pip install openpyxl
